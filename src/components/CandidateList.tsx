@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { useAccount } from 'wagmi'
+import { useWeb3 } from '@/context/Web3Context'
 
 interface Candidate {
   id: number
@@ -10,35 +10,49 @@ interface Candidate {
   imageUrl: string
   description: string
   voteCount: number
+  isActive: boolean
 }
 
 export default function CandidateList() {
-  const { isConnected } = useAccount()
+  const { contract, address } = useWeb3()
   const [loading, setLoading] = useState(false)
-  
-  // Mock data - will be replaced with contract data
-  const [candidates] = useState<Candidate[]>([
-    {
-      id: 1,
-      name: "Alice Johnson",
-      imageUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alice",
-      description: "Experienced leader with a vision for sustainable development",
-      voteCount: 25
-    },
-    {
-      id: 2,
-      name: "Bob Smith",
-      imageUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=Bob",
-      description: "Advocate for technological innovation and digital transformation",
-      voteCount: 18
+  const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [totalVotes, setTotalVotes] = useState(0)
+
+  const loadCandidates = async () => {
+    if (!contract) return
+
+    try {
+      const total = await contract.totalCandidates()
+      const totalVotes = await contract.totalVotes()
+      setTotalVotes(totalVotes.toNumber())
+
+      const loadedCandidates: Candidate[] = []
+      for (let i = 1; i <= total; i++) {
+        const candidate = await contract.getCandidate(i)
+        loadedCandidates.push({
+          id: candidate.id.toNumber(),
+          name: candidate.name,
+          imageUrl: candidate.imageUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${candidate.name}`,
+          description: candidate.description,
+          voteCount: candidate.voteCount.toNumber(),
+          isActive: candidate.isActive
+        })
+      }
+      setCandidates(loadedCandidates)
+    } catch (error) {
+      console.error('Error loading candidates:', error)
     }
-  ])
+  }
 
   const handleVote = async (candidateId: number) => {
+    if (!contract || !address) return
+
     try {
       setLoading(true)
-      // Contract interaction will be implemented here
-      console.log(`Voting for candidate ${candidateId}`)
+      const tx = await contract.vote(candidateId)
+      await tx.wait()
+      await loadCandidates()
     } catch (error) {
       console.error('Error voting:', error)
     } finally {
@@ -46,9 +60,30 @@ export default function CandidateList() {
     }
   }
 
+  useEffect(() => {
+    if (contract) {
+      loadCandidates()
+
+      // Listen for voting events
+      contract.on('VoteCast', (voter, candidateId) => {
+        loadCandidates()
+      })
+
+      return () => {
+        contract.removeAllListeners('VoteCast')
+      }
+    }
+  }, [contract])
+
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold mb-6">Candidates</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Candidates</h2>
+        <div className="text-sm text-gray-400">
+          Total Votes: {totalVotes}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {candidates.map((candidate) => (
           <div
@@ -72,7 +107,7 @@ export default function CandidateList() {
                 </span>
                 <button
                   onClick={() => handleVote(candidate.id)}
-                  disabled={!isConnected || loading}
+                  disabled={!address || loading || !candidate.isActive}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Voting...' : 'Vote'}
@@ -82,6 +117,12 @@ export default function CandidateList() {
           </div>
         ))}
       </div>
+
+      {candidates.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-gray-400">No candidates available.</p>
+        </div>
+      )}
     </div>
   )
 } 

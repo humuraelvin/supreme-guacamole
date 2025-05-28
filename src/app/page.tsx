@@ -1,21 +1,25 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ConnectKitButton } from 'connectkit'
-import { useAccount } from 'wagmi'
+import { useWeb3 } from '@/context/Web3Context'
 import CandidateList from '@/components/CandidateList'
 import VotingStatus from '@/components/VotingStatus'
 import AdminPanel from '@/components/AdminPanel'
 import Header from '@/components/Header'
 
 export default function Home() {
-  const { isConnected, address } = useAccount()
-  const [isAdmin, setIsAdmin] = useState(false)
+  const { address, isAdmin, loading } = useWeb3()
 
-  useEffect(() => {
-    // Check if connected address is admin
-    // This will be implemented when we connect to the contract
-  }, [address])
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-500 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
@@ -32,21 +36,15 @@ export default function Home() {
           </p>
         </div>
 
-        <div className="flex justify-center mb-8">
-          <ConnectKitButton />
-        </div>
-
-        {isConnected && (
+        {address ? (
           <div className="space-y-8">
             <VotingStatus />
             <CandidateList />
             {isAdmin && <AdminPanel />}
           </div>
-        )}
-
-        {!isConnected && (
+        ) : (
           <div className="text-center mt-12">
-            <div className="bg-gray-800 rounded-lg p-8 max-w-md mx-auto">
+            <div className="bg-gray-800/50 backdrop-blur-lg rounded-lg p-8 max-w-md mx-auto border border-gray-700">
               <h2 className="text-2xl font-semibold mb-4">Connect Your Wallet</h2>
               <p className="text-gray-400">
                 Please connect your wallet to participate in the voting process.
